@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#240811">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>For you</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Great+Vibes&display=swap">
+
+<style>
+/* ==========================================================================
+   Tokens
+   ========================================================================== */
+:root{
+  --blush:      #f2c4c0;
+  --burgundy:   #5a1426;
+  --wine-deep:  #240811;
+  --cream:      #f6ebdd;
+  --gold:       #c9a45c;
+  --ink:        rgba(106, 26, 42, .40);
+
+  --script: "Great Vibes", "Snell Roundhand", "Apple Chancery", "Brush Script MT", cursive;
+  --serif:  "Cormorant Garamond", "Iowan Old Style", "Palatino", "Georgia", serif;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+
+  /* paper speckle + film grain, generated once, never animated */
+  --paper-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .2 0 0 0 0 .14 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+
+html{
+  background: var(--wine-deep);
+  /* Native snapping: one swipe lands on exactly one scene */
+  scroll-snap-type: y mandatory;
+  overscroll-behavior: none;             /* no rubber-band on iOS 16+ */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body{
+  background: var(--wine-deep);
+  color: var(--cream);
+  font-family: var(--serif);
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ==========================================================================
+   Scroll track (invisible). Its height is what the finger scrubs through.
+   ========================================================================== */
+.track{ position:relative; z-index:0; }
+.snap{
+  height:100vh; height:100svh;           /* ≤ visible height, so snap points are always reachable */
+  scroll-snap-align:start;
+  scroll-snap-stop:always;
+}
+.snap:last-child{ height:100vh; height:100lvh; }
+
+/* ==========================================================================
+   Stage: fixed, sized to the dynamic viewport
+   ========================================================================== */
+.stage{
+  position:fixed; left:0; top:0;
+  width:100%;
+  height:100vh; height:100dvh;
+  overflow:hidden;
+  z-index:1;
+  pointer-events:none;                   /* touches fall through to the document scroll */
+  contain:paint;
+}
+
+.scene{
+  position:absolute; inset:0;
+  opacity:0; visibility:hidden;
+}
+html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
+
+/* Media sized to the LARGE viewport so it never re-rasterises when Safari's bars collapse */
+.scene-media{
+  position:absolute; left:0; top:0;
+  width:100%;
+  height:100vh; height:100lvh;
+  background-color: var(--wine-deep);
+  will-change:transform;
+  transform:translateZ(0);
+}
+.scene-img{
+  position:absolute; inset:0;
+  background-size:cover;
+  background-position:center;
+  opacity:0;
+  transition:opacity .7s ease;
+}
+.scene-img.is-loaded{ opacity:1; }
+
+.scene-shade{
+  position:absolute; inset:0;
+  background:
+    linear-gradient(to bottom, rgba(24,5,11,.42) 0%, rgba(24,5,11,0) 16%),
+    linear-gradient(to top, rgba(24,5,11,.88) 0%, rgba(24,5,11,.55) 30%, rgba(24,5,11,.12) 58%, rgba(24,5,11,0) 70%);
+}
+.scene--final .scene-shade{
+  background: radial-gradient(120% 70% at 50% 48%, rgba(24,5,11,.25), rgba(24,5,11,.78) 75%);
+}
+
+/* ---------- Copy ---------- */
+.scene-copy{
+  position:absolute; left:0; right:0; bottom:0;
+  padding:
+    0
+    max(34px, calc(var(--safe-r) + 24px))
+    calc(var(--safe-b) + 96px)
+    max(28px, calc(var(--safe-l) + 24px));
+  pointer-events:auto;
+  -webkit-user-select:text; user-select:text;
+}
+.scene-copy > *{ will-change:transform, opacity; }
+
+.kicker{
+  font-style:italic;
+  font-size:1.02rem;
+  letter-spacing:.02em;
+  color:var(--gold);
+  display:flex; align-items:center; gap:.7em;
+  margin-bottom:.1rem;
+}
+.kicker::after{
+  content:""; height:1px; width:52px;
+  background:linear-gradient(90deg, rgba(201,164,92,.9), rgba(201,164,92,0));
+}
+.title{
+  font-family:var(--script);
+  font-weight:400;
+  font-size:clamp(3.1rem, 15vw, 4.7rem);
+  line-height:1.08;
+  color:var(--cream);
+  margin-left:-.03em;
+  text-shadow:0 2px 22px rgba(24,5,11,.6);
+}
+.text{
+  margin-top:.55rem;
+  max-width:21em;
+  font-style:italic;
+  font-size:clamp(1.18rem, 5.3vw, 1.42rem);
+  line-height:1.5;
+  color:rgba(246,235,221,.92);
+  text-wrap:pretty;
+}
+.signature{
+  margin-top:1.1rem;
+  font-family:var(--script);
+  font-size:2rem;
+  color:var(--blush);
+}
+
+.scene--final .scene-copy{
+  top:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center;
+  padding-top:calc(var(--safe-t) + 40px);
+  padding-bottom:calc(var(--safe-b) + 40px);
+}
+.scene--final .kicker::before{
+  content:""; height:1px; width:52px;
+  background:linear-gradient(270deg, rgba(201,164,92,.9), rgba(201,164,92,0));
+}
+.scene--final .title{ font-size:clamp(3.4rem, 17vw, 5.2rem); }
+.scene--final .text{ margin-inline:auto; max-width:17em; }
+
+/* ---------- Floating hearts (final scene only) ---------- */
+.float-hearts{ position:absolute; inset:0; overflow:hidden; }
+.float-heart{
+  position:absolute; bottom:-8%;
+  left:var(--x);
+  width:var(--s); height:var(--s);
+  color:var(--c);
+  opacity:0;
+  will-change:transform, opacity;
+  animation:rise var(--dur) linear var(--delay) infinite;
+  animation-play-state:paused;
+}
+.float-heart svg{ display:block; width:100%; height:100%; fill:currentColor; }
+.stage.is-final .float-heart{ animation-play-state:running; }
+@keyframes rise{
+  0%   { transform:translate3d(0,0,0) rotate(-10deg); opacity:0; }
+  12%  { opacity:var(--o); }
+  50%  { transform:translate3d(var(--sway),-55vh,0) rotate(8deg); }
+  88%  { opacity:var(--o); }
+  100% { transform:translate3d(0,-118vh,0) rotate(-6deg); opacity:0; }
+}
+
+/* ==========================================================================
+   The shutter
+   ========================================================================== */
+.shutter{
+  position:absolute; inset:0;
+  z-index:5;
+  visibility:hidden;
+  display:grid; place-items:center;
+}
+.blade{
+  position:absolute; left:50%; top:50%;
+  width:var(--bw, 700px); height:var(--bh, 520px);
+  transform-origin:0 0;
+  will-change:transform;
+  backface-visibility:hidden;
+  border-radius:3px;
+  background:
+    var(--paper-noise),
+    /* red margin rule, like writing paper */
+    linear-gradient(90deg, transparent 10.8%, rgba(176,70,86,.16) 11%, transparent 11.2%),
+    /* ruled lines, aligned to the cutting edge */
+    repeating-linear-gradient(to top, transparent 0 33px, rgba(106,26,42,.075) 33px 34px),
+    radial-gradient(90% 70% at 12% 92%, rgba(255,255,255,.38), rgba(255,255,255,0) 60%),
+    linear-gradient(145deg, var(--p1), var(--p2));
+  /* shadow falls onto the blade beneath (-x) and into the aperture (+y) */
+  box-shadow:
+    -12px 8px 26px -6px rgba(52,8,20,.42),
+    -2px 1px 4px rgba(52,8,20,.22),
+    inset 0 -1px 0 rgba(106,26,42,.22),
+    inset 1px 0 0 rgba(255,255,255,.6);
+}
+/* diagonal fold crease */
+.blade::before{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(to top right,
+    transparent 49.55%, rgba(120,76,52,.11) 49.8%, rgba(255,255,255,.42) 50.05%, transparent 50.4%);
+}
+/* envelope flap near the centre */
+.blade .flap{
+  position:absolute; inset:0;
+  clip-path:polygon(0 100%, 22% 66%, 58% 100%);
+  background:linear-gradient(to top, rgba(106,26,42,.07), rgba(255,255,255,.22));
+}
+.blade .ink{
+  position:absolute; left:5.5%; top:30%;
+  font-family:var(--script);
+  font-size:27px; line-height:34px;
+  color:var(--ink);
+  white-space:nowrap;
+  transform:rotate(-1.5deg);
+}
+.blade .seal{
+  position:absolute; left:22%; top:66%;
+  width:50px; height:50px; margin:-25px 0 0 -25px;
+  border-radius:47% 53% 50% 50%;
+  background:radial-gradient(circle at 36% 30%, #b0445a 0%, #7a1b31 45%, #4e0d1d 100%);
+  box-shadow:0 3px 5px rgba(40,5,14,.35), inset 0 0 0 5px rgba(0,0,0,.14), inset 0 0 0 6px rgba(255,190,170,.12);
+  display:grid; place-items:center;
+}
+.blade .seal svg{ width:20px; height:20px; fill:rgba(240,190,150,.55); }
+
+.heart{
+  position:relative;
+  width:min(48vw, 34dvh, 220px);
+  opacity:0; visibility:hidden;
+  will-change:transform, opacity;
+}
+.heart svg{ display:block; width:100%; height:auto; overflow:visible; }
+
+/* ==========================================================================
+   Overlays & UI
+   ========================================================================== */
+.vignette{
+  position:absolute; inset:0; z-index:6;
+  background:radial-gradient(135% 95% at 50% 45%, rgba(0,0,0,0) 55%, rgba(20,3,9,.55) 100%);
+}
+.grain{
+  position:absolute; inset:0; z-index:6;
+  background-image:var(--grain);
+  background-size:220px 220px;
+  opacity:.05;
+}
+
+.dots{
+  position:absolute; z-index:7;
+  right:max(8px, calc(var(--safe-r) + 4px));
+  top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column;
+  pointer-events:auto;
+}
+.dots button{
+  width:28px; height:26px;
+  border:0; background:none; cursor:pointer;
+  display:grid; place-items:center;
+}
+.dots button::before{
+  content:""; width:5px; height:5px; border-radius:50%;
+  background:rgba(246,235,221,.45);
+  transition:transform .4s ease, background-color .4s ease;
+}
+.dots button[aria-current="true"]::before{ background:var(--gold); transform:scale(1.5); }
+.dots button:focus-visible{ outline:1px solid var(--gold); outline-offset:-4px; border-radius:6px; }
+
+.hint{
+  position:absolute; z-index:7;
+  left:50%; bottom:calc(var(--safe-b) + 18px);
+  transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  font-style:italic; font-size:.95rem; color:rgba(246,235,221,.7);
+  opacity:0; transition:opacity .8s ease;
+}
+.hint i{
+  display:block; width:1px; height:26px;
+  background:linear-gradient(to bottom, var(--gold), rgba(201,164,92,0));
+  transform-origin:top;
+  animation:hint 2.4s ease-in-out infinite;
+}
+@keyframes hint{ 0%{transform:scaleY(.2);opacity:0} 40%{opacity:1} 100%{transform:scaleY(1);opacity:0} }
+.stage.is-ready .hint{ opacity:1; }
+.stage.has-moved .hint{ opacity:0; }
+
+.sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+/* ==========================================================================
+   Landscape
+   ========================================================================== */
+@media (orientation: landscape) and (max-height: 540px){
+  .scene-copy{
+    max-width:64%;
+    padding-bottom:calc(var(--safe-b) + 30px);
+    padding-left:max(40px, calc(var(--safe-l) + 28px));
+  }
+  .title{ font-size:clamp(2.4rem, 12dvh, 3.8rem); }
+  .text{ font-size:1.12rem; }
+  .scene--final .scene-copy{ max-width:none; }
+  .scene--final .title{ font-size:clamp(2.6rem, 14dvh, 4rem); }
+  .hint{ display:none; }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce){
+  .hint i{ animation:none; transform:none; opacity:.8; }
+  .float-heart{ display:none; }
+  .scene-img{ transition:none; }
+}
+
+/* No-GSAP fallback (e.g. offline): simple fades */
+.no-gsap .scene{ transition:opacity .6s ease, visibility .6s; }
+.no-gsap .scene.is-active{ opacity:1; visibility:visible; }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div id="scenes"></div>
+  <div class="shutter" id="shutter" aria-hidden="true">
+    <div class="heart" id="heart"></div>
+  </div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+  <nav class="dots" id="dots" aria-label="Chapters"></nav>
+  <div class="hint" aria-hidden="true">scroll gently<i></i></div>
+</div>
+
+<main class="track" id="track" aria-hidden="true"></main>
+<div class="sr-only" id="sizeProbe" style="position:fixed;top:0;height:100vh;height:100lvh;width:0;visibility:hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script>
+/* ==========================================================================
+   ✎  EDIT YOUR STORY HERE
+   --------------------------------------------------------------------------
+   image     path to your photo (WebP, 1206 × 2622 px recommended).
+             If the file is missing, a soft painted placeholder is shown.
+   position  optional focal point for the crop, e.g. "50% 30%".
+   title     headline (script font).
+   text      one or two lines (serif).
+   kicker    optional small line above the title. Omit for "Chapter one…",
+             or set to "" to hide it.
+   mood      placeholder palette: "dusk", "golden", "candle", "rain", "wine".
+   final     true on the last scene: centred layout + floating hearts.
+   signature optional closing line (final scene).
+   Add or remove objects freely — everything adapts.
+   ========================================================================== */
+const SCENES = [
+  {
+    image: "images/scene1.webp",
+    title: "The day we met",
+    text:  "A crowded room, a borrowed umbrella, and suddenly the whole world went quiet.",
+    mood:  "dusk"
+  },
+  {
+    image: "images/scene2.webp",
+    title: "Our first adventure",
+    text:  "Wrong turns, cold coffee, and a sunset we still talk about. Every mile was ours.",
+    mood:  "golden"
+  },
+  {
+    image: "images/scene3.webp",
+    title: "The little things",
+    text:  "The way you hum while you cook. The notes you hide in my coat. I keep every one.",
+    mood:  "candle"
+  },
+  {
+    image: "images/scene4.webp",
+    title: "Through every season",
+    text:  "Rain, distance, long days — and always your hand, finding mine.",
+    mood:  "rain"
+  },
+  {
+    image: "images/scene5.webp",
+    kicker: "And so",
+    title: "Forever yours,",
+    text:  "Every chapter has led me here, to you. Will you write the rest of our story with me?",
+    signature: "with all my love",
+    mood:  "wine",
+    final: true
+  }
+];
+
+const SETTINGS = {
+  blades: 9,        // 8–10 looks most like a real iris
+  spin: 110,        // degrees the assembly turns while closing
+  smoothing: 1.6,   // seconds the shutter takes to catch up with your finger.
+                    // Higher = slower, dreamier transitions (0 = locked 1:1 to scroll)
+  introPace: 1.5,   // slows the opening heart-to-scene animation (1 = original speed)
+  letters: [        // faint handwriting on the blades
+    ["My dearest,", "I think of you", "every morning"],
+    ["come home soon,", "the kettle is on"],
+    ["since the day", "we met, only you"],
+    ["yours, always,", "and then some"],
+    ["I kept the ticket", "from that night"],
+    ["all my love,", "all of it"],
+    ["forever &", "always"],
+    ["read this twice,", "then once more"],
+    ["P.S. you are", "my favourite"],
+    ["with every", "heartbeat"]
+  ]
+};
+</script>
+
+<script>
+(() => {
+  "use strict";
+
+  const N = SCENES.length;
+  const B = Math.max(6, Math.min(12, SETTINGS.blades | 0));
+  const STEP = 360 / B;
+  const TAN = Math.tan(Math.PI / B);
+  const SPIN = SETTINGS.spin;
+  const reduceMQ = matchMedia("(prefers-reduced-motion: reduce)");
+  const reduce = reduceMQ.matches;
+  reduceMQ.addEventListener?.("change", () => location.reload());
+
+  const stage   = document.getElementById("stage");
+  const scenesEl= document.getElementById("scenes");
+  const shutter = document.getElementById("shutter");
+  const heartEl = document.getElementById("heart");
+  const dotsEl  = document.getElementById("dots");
+  const track   = document.getElementById("track");
+  const probe   = document.getElementById("sizeProbe");
+
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  window.scrollTo(0, 0);
+
+  /* ---------- Placeholder "photographs": soft bokeh paintings ---------- */
+  const MOODS = {
+    dusk:   { base:"linear-gradient(168deg,#2a0b16 0%,#6b2136 42%,#c46a76 76%,#f0b9a6 100%)",
+              glow:"radial-gradient(70% 45% at 70% 72%,rgba(255,196,170,.45),rgba(255,196,170,0) 70%)",
+              dots:["255,214,190","246,180,176","255,236,210"] },
+    golden: { base:"linear-gradient(172deg,#351712 0%,#84452c 40%,#dc9e67 74%,#f5d4a4 100%)",
+              glow:"radial-gradient(60% 40% at 50% 78%,rgba(255,220,150,.55),rgba(255,220,150,0) 70%)",
+              dots:["255,226,168","255,200,140","255,244,220"] },
+    candle: { base:"linear-gradient(160deg,#170709 0%,#3b1318 48%,#76301f 84%,#b3653a 100%)",
+              glow:"radial-gradient(45% 30% at 38% 64%,rgba(255,190,110,.5),rgba(255,190,110,0) 70%)",
+              dots:["255,196,120","240,160,90","255,226,170"] },
+    rain:   { base:"linear-gradient(170deg,#12132a 0%,#33254a 44%,#784869 80%,#c38894 100%)",
+              glow:"radial-gradient(60% 40% at 60% 70%,rgba(242,196,192,.35),rgba(242,196,192,0) 70%)",
+              dots:["210,196,240","242,196,210","255,230,236"] },
+    wine:   { base:"linear-gradient(180deg,#1c0610 0%,#4a1024 50%,#2a0913 100%)",
+              glow:"radial-gradient(55% 38% at 50% 46%,rgba(242,160,170,.4),rgba(242,160,170,0) 72%)",
+              dots:["242,196,192","201,164,92","255,226,220"] }
+  };
+  function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function painting(seed, moodName){
+    const m = MOODS[moodName] || MOODS.dusk, r = rng(seed * 977 + 13), layers = [];
+    for (let k = 0; k < 12; k++){
+      const x = (r() * 100).toFixed(1), y = (8 + r() * 70).toFixed(1);
+      const rad = Math.round(12 + r() * 44), c = m.dots[k % m.dots.length];
+      const a = (.1 + r() * .26).toFixed(2);
+      layers.push(`radial-gradient(circle at ${x}% ${y}%,rgba(${c},${a}) 0,rgba(${c},${(a * .7).toFixed(2)}) ${Math.round(rad * .72)}px,rgba(${c},0) ${rad}px)`);
+    }
+    layers.push(m.glow, m.base);
+    return layers.join(",");
+  }
+
+  /* ---------- Build scenes ---------- */
+  const WORDS = ["one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
+  const HEART_PATH_SM = "M16 28.5C6 21 .5 15.4.5 9 .5 4.3 4.2.5 8.8.5c3 0 5.6 1.6 7.2 4.1C17.6 2.1 20.2.5 23.2.5c4.6 0 8.3 3.8 8.3 8.5 0 6.4-5.5 12-15.5 19.5z";
+  const heartSVG = `<svg viewBox="0 0 32 29" aria-hidden="true"><path d="${HEART_PATH_SM}"/></svg>`;
+
+  const scenes = SCENES.map((s, i) => {
+    const root = document.createElement("section");
+    root.className = "scene" + (s.final ? " scene--final" : "");
+    root.setAttribute("aria-label", s.title || `Scene ${i + 1}`);
+
+    const media = document.createElement("div");
+    media.className = "scene-media";
+    media.style.backgroundImage = painting(i + 1, s.mood);
+    const img = document.createElement("div");
+    img.className = "scene-img";
+    if (s.position) img.style.backgroundPosition = s.position;
+    media.appendChild(img);
+
+    const shade = document.createElement("div");
+    shade.className = "scene-shade";
+
+    root.append(media, shade);
+
+    if (s.final && !reduce){
+      const fh = document.createElement("div");
+      fh.className = "float-hearts";
+      fh.setAttribute("aria-hidden", "true");
+      const r = rng(4242), colors = ["#f2c4c0", "#e8a3a6", "#c9a45c", "#f6ebdd"];
+      for (let k = 0; k < 14; k++){
+        const h = document.createElement("span");
+        h.className = "float-heart";
+        h.style.cssText =
+          `--x:${(4 + r() * 88).toFixed(1)}%;--s:${Math.round(10 + r() * 16)}px;--c:${colors[k % colors.length]};` +
+          `--o:${(.35 + r() * .45).toFixed(2)};--dur:${(9 + r() * 7).toFixed(1)}s;--delay:${(-r() * 14).toFixed(1)}s;` +
+          `--sway:${Math.round(-30 + r() * 60)}px`;
+        h.innerHTML = heartSVG;
+        fh.appendChild(h);
+      }
+      root.appendChild(fh);
+    }
+
+    const copy = document.createElement("div");
+    copy.className = "scene-copy";
+    const parts = [];
+    const kickerText = s.kicker !== undefined ? s.kicker : `Chapter ${WORDS[i] || i + 1}`;
+    if (kickerText){
+      const k = document.createElement("p"); k.className = "kicker"; k.textContent = kickerText; parts.push(k);
+    }
+    const t = document.createElement(i === 0 ? "h1" : "h2"); t.className = "title"; t.textContent = s.title || ""; parts.push(t);
+    if (s.text){ const p = document.createElement("p"); p.className = "text"; p.textContent = s.text; parts.push(p); }
+    if (s.signature){ const g = document.createElement("p"); g.className = "signature"; g.textContent = s.signature; parts.push(g); }
+    copy.append(...parts);
+    root.appendChild(copy);
+
+    scenesEl.appendChild(root);
+    return { root, media, img, copy: parts, data: s };
+  });
+
+  /* ---------- Scroll track + chapter dots ---------- */
+  const snaps = SCENES.map(() => {
+    const d = document.createElement("div"); d.className = "snap"; track.appendChild(d); return d;
+  });
+  const dots = SCENES.map((s, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-label", `Go to ${s.title || "scene " + (i + 1)}`);
+    b.addEventListener("click", () => window.scrollTo({ top: snaps[i].offsetTop, behavior: reduce ? "auto" : "smooth" }));
+    dotsEl.appendChild(b);
+    return b;
+  });
+
+  /* ---------- Build blades ---------- */
+  const PAPERS = [["#f8efe2", "#ecdcc4"], ["#f7e6de", "#ead0c6"], ["#f4eadb", "#e4d2b6"]];
+  const blades = [];
+  for (let i = 0; i < B; i++){
+    const b = document.createElement("div");
+    b.className = "blade";
+    const [p1, p2] = PAPERS[i % PAPERS.length];
+    b.style.cssText = `--p1:${p1};--p2:${p2};z-index:${i + 1}`;
+    const lines = SETTINGS.letters[i % SETTINGS.letters.length];
+    b.innerHTML =
+      `<div class="flap"></div><div class="ink">${lines.map(l => l.replace(/[<&]/g, "")).join("<br>")}</div>` +
+      (i % 3 === 0 ? `<div class="seal">${heartSVG}</div>` : "");
+    shutter.insertBefore(b, heartEl);
+    blades.push(b);
+  }
+
+  /* ---------- The heart the blades fold into ---------- */
+  (function buildHeart(){
+    const H = "M100 178C40 130 4 96 4 56 4 26 28 4 56 4c20 0 36 12 44 28C108 16 124 4 144 4c28 0 52 22 52 52 0 40-36 74-96 122z";
+    const cx = 100, cy = 92, L = 260, shades = ["#f8efe2", "#f1ddd2", "#ecdcc4"];
+    let wedges = "", seams = "";
+    for (let k = 0; k < B; k++){
+      // seams line up with where the closed blades meet
+      const a1 = (k * STEP + SPIN - 90) * Math.PI / 180, a2 = a1 + STEP * Math.PI / 180;
+      const x1 = cx + L * Math.cos(a1), y1 = cy + L * Math.sin(a1);
+      const x2 = cx + L * Math.cos(a2), y2 = cy + L * Math.sin(a2);
+      wedges += `<path d="M${cx} ${cy}L${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}Z" fill="${shades[k % 3]}"/>`;
+      seams  += `<line x1="${cx}" y1="${cy}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`;
+    }
+    heartEl.innerHTML = `
+<svg viewBox="-10 -10 220 204" aria-hidden="true">
+  <defs>
+    <clipPath id="hc"><path d="${H}"/></clipPath>
+    <pattern id="hr" width="10" height="9" patternUnits="userSpaceOnUse"><rect y="8.4" width="10" height=".6" fill="rgba(106,26,42,.10)"/></pattern>
+    <radialGradient id="hs" cx=".32" cy=".25" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="wx" cx=".38" cy=".32" r=".75"><stop offset="0" stop-color="#b0445a"/><stop offset=".5" stop-color="#7a1b31"/><stop offset="1" stop-color="#4a0c1b"/></radialGradient>
+  </defs>
+  <path d="${H}" fill="rgba(36,4,12,.22)" transform="translate(0 9)"/>
+  <path d="${H}" fill="rgba(36,4,12,.2)" transform="translate(0 4)"/>
+  <g clip-path="url(#hc)">
+    ${wedges}
+    <rect x="-10" y="-10" width="220" height="204" fill="url(#hr)"/>
+    <g stroke="rgba(106,26,42,.28)" stroke-width="1">${seams}</g>
+    <rect x="-10" y="-10" width="220" height="204" fill="url(#hs)"/>
+  </g>
+  <path d="${H}" fill="none" stroke="#6e1a2e" stroke-width="2.6"/>
+  <path d="${H}" fill="none" stroke="rgba(201,164,92,.75)" stroke-width="1" transform="translate(100 92) scale(.9) translate(-100 -92)"/>
+  <circle cx="${cx}" cy="${cy}" r="19" fill="url(#wx)"/>
+  <circle cx="${cx}" cy="${cy}" r="14.5" fill="none" stroke="rgba(240,190,150,.35)" stroke-width="1"/>
+  <path d="${HEART_PATH_SM}" fill="rgba(240,190,150,.6)" transform="translate(${cx - 8} ${cy - 7.3}) scale(.5)"/>
+</svg>`;
+  })();
+
+  /* ---------- Shutter geometry ---------- */
+  // Each blade's cutting edge is a line at distance d from the centre. Nine such
+  // lines form the polygonal aperture; shrinking d while turning the whole set
+  // gives the spiral close. Only transform is ever written.
+  const shut = { c: 0 };                  // 0 = fully open, 1 = fully closed
+  let R = 480, BW = 700, BH = 530, dOpen = 500, shutterShown = false;
+
+  function measure(){
+    const vw = window.innerWidth;
+    const vh = Math.max(window.innerHeight, probe.getBoundingClientRect().height || 0);
+    const nR = Math.ceil(Math.hypot(vw, vh) / 2) + 6;
+    if (nR === R && shutter.style.getPropertyValue("--bw")) return;
+    R = nR;
+    BW = Math.ceil(R * 1.45);
+    BH = Math.ceil(R * 1.1);
+    dOpen = R * 1.03;
+    shutter.style.setProperty("--bw", BW + "px");
+    shutter.style.setProperty("--bh", BH + "px");
+    renderShutter();
+  }
+
+  function renderShutter(){
+    const c = shut.c;
+    if (c <= 0.0005){
+      if (shutterShown){ shutter.style.visibility = "hidden"; shutterShown = false; }
+      return;
+    }
+    if (!shutterShown){ shutter.style.visibility = "visible"; shutterShown = true; }
+    const d = dOpen * (1 - c);
+    const spin = SPIN * c;
+    const x0 = (-d * TAN - 1).toFixed(2);
+    const y0 = (-(d + BH)).toFixed(2);
+    for (let i = 0; i < B; i++){
+      blades[i].style.transform = `rotate(${(i * STEP + spin).toFixed(3)}deg) translate3d(${x0}px,${y0}px,0)`;
+    }
+  }
+
+  measure();
+  let resizeT;
+  window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(measure, 120); }, { passive: true });
+
+  /* ---------- Image preloading (current ± 1) ---------- */
+  const requested = new Set();
+  function preload(i){
+    if (i < 0 || i >= N || requested.has(i)) return;
+    requested.add(i);
+    const src = SCENES[i].image;
+    if (!src) return;
+    const im = new Image();
+    im.decoding = "async";
+    im.src = src;
+    const ready = im.decode ? im.decode() : new Promise((res, rej) => { im.onload = res; im.onerror = rej; });
+    ready.then(() => {
+      scenes[i].img.style.backgroundImage = `url("${src.replace(/"/g, "%22")}")`;
+      scenes[i].img.classList.add("is-loaded");
+    }).catch(() => { /* file missing: keep the painted placeholder */ });
+  }
+
+  /* ---------- Active scene bookkeeping ---------- */
+  let active = -1;
+  function setActive(i){
+    if (i === active) return;
+    active = i;
+    stage.classList.toggle("is-final", i === N - 1 && !!SCENES[i].final);
+    if (i > 0) stage.classList.add("has-moved");
+    dots.forEach((d, k) => d.setAttribute("aria-current", k === i ? "true" : "false"));
+    scenes.forEach((s, k) => s.root.setAttribute("aria-hidden", k === i ? "false" : "true"));
+    preload(i); preload(i + 1); preload(i - 1);
+  }
+  setActive(0);
+
+  /* ---------- Fallback if GSAP could not load ---------- */
+  if (!window.gsap || !window.ScrollTrigger){
+    document.documentElement.classList.add("no-gsap");
+    const step = () => {
+      const h = snaps[1] ? snaps[1].offsetTop : 1;
+      const i = Math.max(0, Math.min(N - 1, Math.round(window.scrollY / h)));
+      scenes.forEach((s, k) => s.root.classList.toggle("is-active", k === i));
+      setActive(i);
+    };
+    window.addEventListener("scroll", step, { passive: true });
+    step();
+    stage.classList.add("is-ready");
+    return;
+  }
+
+  gsap.registerPlugin(ScrollTrigger);
+  ScrollTrigger.config({ ignoreMobileResize: true });
+
+  /* ---------- Initial states ---------- */
+  scenes.forEach((s, i) => {
+    gsap.set(s.root, { autoAlpha: i === 0 ? 1 : 0 });
+    if (!reduce){
+      if (i > 0){
+        gsap.set(s.copy, { autoAlpha: 0, y: 26 });
+        gsap.set(s.media, { scale: 1.14 });
+      }
+    }
+  });
+  gsap.set(heartEl, { autoAlpha: 0, scale: .55 });
+
+  /* ---------- The scrubbed master timeline: 1 time unit per transition ---------- */
+  const tl = gsap.timeline({ paused: true, defaults: { ease: "none", immediateRender: false } });
+
+  for (let i = 0; i < N - 1; i++){
+    const A = scenes[i], Bn = scenes[i + 1], t = i;
+
+    if (reduce){
+      // Reduce Motion: a plain cross-fade, still following the finger
+      tl.fromTo(A.root,  { autoAlpha: 1 }, { autoAlpha: 0, duration: .5 }, t + .25);
+      tl.fromTo(Bn.root, { autoAlpha: 0 }, { autoAlpha: 1, duration: .5 }, t + .25);
+      continue;
+    }
+
+    // current text slips away first
+    tl.fromTo(A.copy, { autoAlpha: 1, y: 0 }, { autoAlpha: 0, y: -14, duration: .1, stagger: .02, ease: "power1.in" }, t);
+
+    // spiral closed
+    tl.fromTo(shut, { c: 0 }, { c: 1, duration: .44, ease: "sine.inOut", onUpdate: renderShutter }, t);
+
+    // blades fold into a heart
+    tl.fromTo(heartEl, { autoAlpha: 0, scale: .55, rotation: -10 }, { autoAlpha: 1, scale: 1, rotation: 0, duration: .1, ease: "power2.out" }, t + .34);
+
+    // swap scenes behind the closed shutter
+    tl.set(A.root,  { autoAlpha: 0 }, t + .44);
+    tl.set(Bn.root, { autoAlpha: 1 }, t + .44);
+
+    // a single heartbeat
+    tl.fromTo(heartEl, { scale: 1 },   { scale: 1.17, duration: .04, ease: "power2.out" }, t + .45);
+    tl.fromTo(heartEl, { scale: 1.17 },{ scale: .96,  duration: .05, ease: "power2.in"  }, t + .49);
+    tl.fromTo(heartEl, { scale: .96 }, { scale: 1,    duration: .03, ease: "sine.out"   }, t + .54);
+
+    // heart dissolves as the blades part
+    tl.fromTo(heartEl, { autoAlpha: 1, scale: 1 }, { autoAlpha: 0, scale: .82, duration: .09, ease: "power1.in" }, t + .58);
+
+    // spiral open (reverse direction)
+    tl.fromTo(shut, { c: 1 }, { c: 0, duration: .42, ease: "sine.inOut", onUpdate: renderShutter }, t + .58);
+    tl.fromTo(Bn.media, { scale: 1.14 }, { scale: 1, duration: .42, ease: "power2.out" }, t + .58);
+
+    // new text drifts up
+    tl.fromTo(Bn.copy, { autoAlpha: 0, y: 26 }, { autoAlpha: 1, y: 0, duration: .14, stagger: .03, ease: "power2.out" }, t + .76);
+  }
+  tl.set({}, {}, Math.max(0, N - 1));      // pin the total length to exactly N-1
+
+  function createScroll(){
+    ScrollTrigger.create({
+      trigger: track,
+      start: "top top",
+      end: () => "+=" + (snaps[N - 1] ? snaps[N - 1].offsetTop : 1),
+      // A number makes the shutter glide after the finger instead of racing
+      // with Safari's fast snap; it still reverses when you scroll back.
+      scrub: SETTINGS.smoothing > 0 ? SETTINGS.smoothing : true,
+      animation: tl,
+      invalidateOnRefresh: true,
+      onUpdate(self){
+        const p = self.progress * (N - 1);
+        setActive(Math.round(p));
+        preload(Math.floor(p) + 1);       // fetch the next image as soon as a transition starts
+      }
+    });
+    stage.classList.add("is-ready");
+  }
+
+  /* ---------- Opening moment: the letter-heart opens onto scene one ---------- */
+  if (reduce || N < 1){
+    createScroll();
+    return;
+  }
+
+  const block = e => e.preventDefault();
+  document.addEventListener("touchmove", block, { passive: false });
+  document.addEventListener("wheel", block, { passive: false });
+
+  shut.c = 1; renderShutter();
+  gsap.set(heartEl, { autoAlpha: 1, scale: 1, rotation: 0 });
+  gsap.set(scenes[0].copy, { autoAlpha: 0, y: 26 });
+  gsap.set(scenes[0].media, { scale: 1.14 });
+
+  const intro = gsap.timeline({
+    delay: .25,
+    onComplete(){
+      document.removeEventListener("touchmove", block);
+      document.removeEventListener("wheel", block);
+      createScroll();
+    }
+  });
+  intro
+    .to(heartEl, { scale: 1.17, duration: .16, ease: "power2.out" }, 0)
+    .to(heartEl, { scale: .96,  duration: .2,  ease: "power2.in" }, .16)
+    .to(heartEl, { scale: 1,    duration: .14, ease: "sine.out" }, .36)
+    .to(heartEl, { autoAlpha: 0, scale: .82, duration: .3, ease: "power1.in" }, .55)
+    .to(shut, { c: 0, duration: 1.15, ease: "sine.inOut", onUpdate: renderShutter }, .5)
+    .to(scenes[0].media, { scale: 1, duration: 1.5, ease: "power2.out" }, .5)
+    .to(scenes[0].copy, { autoAlpha: 1, y: 0, duration: .6, stagger: .1, ease: "power2.out" }, 1.05);
+  intro.timeScale(1 / Math.max(.25, SETTINGS.introPace || 1));
+})();
+</script>
+</body>
+</html>
