@@ -38,6 +38,11 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 .055'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
+/* Height of Safari's toolbar while it is showing (0 when collapsed) */
+@supports (height: 1dvh){
+  :root{ --bar: calc(100lvh - 100dvh); }
+}
+
 *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
 
 html{
@@ -74,8 +79,9 @@ body{
 .stage{
   position:fixed; left:0; top:0;
   width:100%;
-  height:100vh; height:100dvh;
+  height:100vh; height:100lvh;           /* full screen, including behind Safari's toolbar */
   overflow:hidden;
+
   z-index:1;
   pointer-events:none;                   /* touches fall through to the document scroll */
   contain:paint;
@@ -121,7 +127,7 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
 
 /* ---------- Copy ---------- */
 .scene-copy{
-  position:absolute; left:0; right:0; bottom:0;
+  position:absolute; left:0; right:0; bottom:var(--bar, 0px);
   padding:
     0
     max(34px, calc(var(--safe-r) + 24px))
@@ -208,7 +214,7 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
    The shutter
    ========================================================================== */
 .shutter{
-  position:absolute; inset:0;
+  position:absolute; left:0; right:0; top:0; bottom:var(--bar, 0px);
   z-index:5;
   visibility:hidden;
   display:grid; place-items:center;
@@ -280,7 +286,7 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
 .dots{
   position:absolute; z-index:7;
   right:max(8px, calc(var(--safe-r) + 4px));
-  top:50%; transform:translateY(-50%);
+  top:calc((100% - var(--bar, 0px)) / 2); transform:translateY(-50%);
   display:flex; flex-direction:column;
   pointer-events:auto;
 }
@@ -299,7 +305,7 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
 
 .hint{
   position:absolute; z-index:7;
-  left:50%; bottom:calc(var(--safe-b) + 18px);
+  left:50%; bottom:calc(var(--bar, 0px) + var(--safe-b) + 18px);
   transform:translateX(-50%);
   display:flex; flex-direction:column; align-items:center; gap:8px;
   font-style:italic; font-size:.95rem; color:rgba(246,235,221,.7);
@@ -408,8 +414,8 @@ const SCENES = [
   {
     image: "img/boom.jpeg",
     kicker: "Cuối cùng",
-    title: "Cái này chưa làm em thấy anh yêu em thật lòng được,",
-    text:  "nhưng có thế làm em cảm thấy là tình yêu anh dành cho em không thay đổi gì. Thì khi quen em đến giờ, và 100 năm sau. Luôn luôn yêu em thậta22222",
+    title: "Phải đang làm nhiều để em tin anh yêu thật lòng,",
+    text:  "nhưng có thế làm em cảm thấy là tình yêu anh dành cho em không thay đổi gì. Từ khi quen em đến giờ, và 100 năm sau. Luôn luôn yêu em thật lòng!",
     signature: "anh yêu em nhiều lắm",
     mood:  "wine",
     final: true
