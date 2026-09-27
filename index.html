@@ -35,7 +35,7 @@
 
   /* paper speckle + film grain, generated once, never animated */
   --paper-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .2 0 0 0 0 .14 0 0 0 .22 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 0 .055'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
 *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
@@ -93,9 +93,9 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
   width:100%;
   height:100vh; height:100lvh;
   background-color: var(--wine-deep);
-  will-change:transform;
-  transform:translateZ(0);
 }
+/* Only the current scene and its neighbours get GPU layers (saves memory on 4 GB iPhones) */
+.scene.is-near .scene-media{ will-change:transform; }
 .scene-img{
   position:absolute; inset:0;
   background-size:cover;
@@ -108,11 +108,15 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
 .scene-shade{
   position:absolute; inset:0;
   background:
+    var(--grain) 0 0 / 220px 220px,
+    radial-gradient(135% 95% at 50% 45%, rgba(20,3,9,0) 55%, rgba(20,3,9,.5) 100%),
     linear-gradient(to bottom, rgba(24,5,11,.42) 0%, rgba(24,5,11,0) 16%),
     linear-gradient(to top, rgba(24,5,11,.88) 0%, rgba(24,5,11,.55) 30%, rgba(24,5,11,.12) 58%, rgba(24,5,11,0) 70%);
 }
 .scene--final .scene-shade{
-  background: radial-gradient(120% 70% at 50% 48%, rgba(24,5,11,.25), rgba(24,5,11,.78) 75%);
+  background:
+    var(--grain) 0 0 / 220px 220px,
+    radial-gradient(120% 70% at 50% 48%, rgba(24,5,11,.25), rgba(24,5,11,.78) 75%);
 }
 
 /* ---------- Copy ---------- */
@@ -126,7 +130,6 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
   pointer-events:auto;
   -webkit-user-select:text; user-select:text;
 }
-.scene-copy > *{ will-change:transform, opacity; }
 
 .kicker{
   font-style:italic;
@@ -227,7 +230,7 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
     linear-gradient(145deg, var(--p1), var(--p2));
   /* shadow falls onto the blade beneath (-x) and into the aperture (+y) */
   box-shadow:
-    -12px 8px 26px -6px rgba(52,8,20,.42),
+    -10px 7px 18px -5px rgba(52,8,20,.42),
     -2px 1px 4px rgba(52,8,20,.22),
     inset 0 -1px 0 rgba(106,26,42,.22),
     inset 1px 0 0 rgba(255,255,255,.6);
@@ -273,16 +276,6 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
 /* ==========================================================================
    Overlays & UI
    ========================================================================== */
-.vignette{
-  position:absolute; inset:0; z-index:6;
-  background:radial-gradient(135% 95% at 50% 45%, rgba(0,0,0,0) 55%, rgba(20,3,9,.55) 100%);
-}
-.grain{
-  position:absolute; inset:0; z-index:6;
-  background-image:var(--grain);
-  background-size:220px 220px;
-  opacity:.05;
-}
 
 .dots{
   position:absolute; z-index:7;
@@ -361,8 +354,6 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
   <div class="shutter" id="shutter" aria-hidden="true">
     <div class="heart" id="heart"></div>
   </div>
-  <div class="vignette" aria-hidden="true"></div>
-  <div class="grain" aria-hidden="true"></div>
   <nav class="dots" id="dots" aria-label="Chapters"></nav>
   <div class="hint" aria-hidden="true">scroll gently<i></i></div>
 </div>
@@ -391,31 +382,31 @@ html:not(.no-gsap) .scene:first-child{ opacity:1; visibility:visible; }
    ========================================================================== */
 const SCENES = [
   {
-    image: "images/flow.png",
+    image: "img/flow.png",
     title: "The day we met",
     text:  "A crowded room, a borrowed umbrella, and suddenly the whole world went quiet.",
     mood:  "dusk"
   },
   {
-    image: "images/find.png",
+    image: "img/find.png",
     title: "Our first adventure",
     text:  "Wrong turns, cold coffee, and a sunset we still talk about. Every mile was ours.",
     mood:  "golden"
   },
   {
-    image: "images/hand.png",
+    image: "img/hand.png",
     title: "The little things",
     text:  "The way you hum while you cook. The notes you hide in my coat. I keep every one.",
     mood:  "candle"
   },
   {
-    image: "images/mommom.jpeg",
+    image: "img/mommom.jpeg",
     title: "Through every season",
     text:  "Rain, distance, long days — and always your hand, finding mine.",
     mood:  "rain"
   },
   {
-    image: "images/boom.jpeg",
+    image: "img/boom.jpeg",
     kicker: "And so",
     title: "Forever yours,",
     text:  "Every chapter has led me here, to you. Will you write the rest of our story with me?",
@@ -503,6 +494,7 @@ const SETTINGS = {
 
   /* ---------- Build scenes ---------- */
   const WORDS = ["one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
+  const WORDS2 = ["1","2","3","4","5","6","7","eight","nine","ten","eleven","twelve"];
   const HEART_PATH_SM = "M16 28.5C6 21 .5 15.4.5 9 .5 4.3 4.2.5 8.8.5c3 0 5.6 1.6 7.2 4.1C17.6 2.1 20.2.5 23.2.5c4.6 0 8.3 3.8 8.3 8.5 0 6.4-5.5 12-15.5 19.5z";
   const heartSVG = `<svg viewBox="0 0 32 29" aria-hidden="true"><path d="${HEART_PATH_SM}"/></svg>`;
 
@@ -529,7 +521,7 @@ const SETTINGS = {
       fh.className = "float-hearts";
       fh.setAttribute("aria-hidden", "true");
       const r = rng(4242), colors = ["#f2c4c0", "#e8a3a6", "#c9a45c", "#f6ebdd"];
-      for (let k = 0; k < 14; k++){
+      for (let k = 0; k < 10; k++){
         const h = document.createElement("span");
         h.className = "float-heart";
         h.style.cssText =
@@ -545,7 +537,7 @@ const SETTINGS = {
     const copy = document.createElement("div");
     copy.className = "scene-copy";
     const parts = [];
-    const kickerText = s.kicker !== undefined ? s.kicker : `Chapter ${WORDS[i] || i + 1}`;
+    const kickerText = s.kicker !== undefined ? s.kicker : `#${WORDS2[i] || i + 1}`;
     if (kickerText){
       const k = document.createElement("p"); k.className = "kicker"; k.textContent = kickerText; parts.push(k);
     }
@@ -638,8 +630,8 @@ const SETTINGS = {
     const nR = Math.ceil(Math.hypot(vw, vh) / 2) + 6;
     if (nR === R && shutter.style.getPropertyValue("--bw")) return;
     R = nR;
-    BW = Math.ceil(R * 1.45);
-    BH = Math.ceil(R * 1.1);
+    BW = Math.ceil(R * 1.08);            // smallest size that still closes with no gaps
+    BH = Math.ceil(R * 0.82);
     dOpen = R * 1.03;
     shutter.style.setProperty("--bw", BW + "px");
     shutter.style.setProperty("--bh", BH + "px");
@@ -678,6 +670,7 @@ const SETTINGS = {
     im.src = src;
     const ready = im.decode ? im.decode() : new Promise((res, rej) => { im.onload = res; im.onerror = rej; });
     ready.then(() => {
+      if (!requested.has(i)) return;              // released while loading
       scenes[i].img.style.backgroundImage = `url("${src.replace(/"/g, "%22")}")`;
       scenes[i].img.classList.add("is-loaded");
     }).catch(() => { /* file missing: keep the painted placeholder */ });
@@ -691,7 +684,16 @@ const SETTINGS = {
     stage.classList.toggle("is-final", i === N - 1 && !!SCENES[i].final);
     if (i > 0) stage.classList.add("has-moved");
     dots.forEach((d, k) => d.setAttribute("aria-current", k === i ? "true" : "false"));
-    scenes.forEach((s, k) => s.root.setAttribute("aria-hidden", k === i ? "false" : "true"));
+    scenes.forEach((s, k) => {
+      const dist = Math.abs(k - i);
+      s.root.setAttribute("aria-hidden", dist === 0 ? "false" : "true");
+      s.root.classList.toggle("is-near", dist <= 1);
+      if (dist > 2 && requested.has(k)){           // free decoded image memory
+        requested.delete(k);
+        s.img.classList.remove("is-loaded");
+        s.img.style.backgroundImage = "";
+      }
+    });
     preload(i); preload(i + 1); preload(i - 1);
   }
   setActive(0);
